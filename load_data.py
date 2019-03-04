@@ -14,6 +14,7 @@ from scipy.ndimage import rotate
 from time import time
 from sklearn.cluster import KMeans, SpectralClustering
 from sklearn.decomposition import PCA
+from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 from models import LeNetMNIST, LeNetCIFAR, LeNetVOC, LeNetCIFAR_train, LeNetMNIST_train
 
 
@@ -52,7 +53,7 @@ class Data:
 			elif self.dataset_name == "CIFAR": model=LeNetCIFAR()
 			elif self.dataset_name == "VOC2012": model=LeNetVOC()
 			self.networks.append(model)
-		print "Networks created"
+		#print "Networks created"
 
 	def cluster_affinity_matrix(self, n_clusters=10):
 		mean_affinity_matrix = np.mean(self.all_affinity_matrices, axis=0)
@@ -142,13 +143,8 @@ class Data:
 		return inputs, ground_truth
 
 	def run_dataset(self, inputs, n_clusters=10, iters=151):
-		
-		save_every = 5
 
 		tot_len = len(inputs)
-
-		all_affinity_matrices = []
-		temp_affinity_matrices = []
 	
 		inputs = torch.from_numpy(inputs)
 		start = time()
@@ -157,7 +153,7 @@ class Data:
 
 		# set max batch size:
 		max_size = self.max_size
-		
+		first_pass = True
 		i = 0
 		while i<iters:
 			affinity_matrix = np.zeros((tot_len,tot_len))
@@ -170,13 +166,13 @@ class Data:
 			for k in xrange(no_of_passes):
 				start_idx = k*max_size
 				end_idx = min([(k+1)*max_size, tot_len])
-				if self.is_cuda:
-					temp_inputs = inputs[start_idx:end_idx].cuda()
+				#if self.is_cuda:
+					#temp_inputs = inputs[start_idx:end_idx].cuda()
 				################### EXTRACTING FEATURES ################
 				if k == 0:
-					features = model(temp_inputs).data.cpu().numpy()
+					features = model(inputs[start_idx:end_idx].cuda()).data.cpu().numpy()
 				else:
-					features = np.concatenate((features, model(temp_inputs).data.cpu().numpy()), axis=0)
+					features = np.concatenate((features, model(inputs[start_idx:end_idx].cuda()).data.cpu().numpy()), axis=0)
 
 			try:
 				################### CLUSTERING #########################
@@ -188,19 +184,21 @@ class Data:
 					indices = np.where(kmeans.labels_ == j)[0]
 					for pair in itertools.product(indices, repeat=2):
 							affinity_matrix[pair[0],pair[1]] += 1
-				temp_affinity_matrices.append(affinity_matrix)
+
+				if first_pass:
+					all_affinity_matrices = affinity_matrix[...]
+					first_pass = False
+				else:
+					all_affinity_matrices += affinity_matrix
 				i += 1
 				del kmeans, indices
 			except:
 				print "Some error"
 			del features, affinity_matrix
-			if i % save_every == 0:
+			if i % 10 == 0:
 				print "Iteration:", i, "Time elapsed:", time()-start
 				start = time()
-				all_affinity_matrices.append(np.mean(np.asarray(temp_affinity_matrices), axis=0))
-				del temp_affinity_matrices
-				temp_affinity_matrices = []
-		return np.asarray(all_affinity_matrices)
+		return all_affinity_matrices/i
 
 	def train_net(self):
 		print "Training"

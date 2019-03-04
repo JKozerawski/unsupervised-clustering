@@ -12,10 +12,10 @@ class LeNetMNIST(nn.Module):
         self.fc1 = nn.Linear(4*4*50, 500)
         self.fc2 = nn.Linear(500, n_out)
 	
-	torch.nn.init.xavier_normal_(self.conv1.weight, gain = gain)
-	torch.nn.init.xavier_normal_(self.conv2.weight, gain = gain)
-	torch.nn.init.xavier_normal_(self.fc1.weight, gain = gain)
-	torch.nn.init.xavier_normal_(self.fc2.weight, gain = gain)
+        torch.nn.init.xavier_normal_(self.conv1.weight, gain = gain)
+        torch.nn.init.xavier_normal_(self.conv2.weight, gain = gain)
+        torch.nn.init.xavier_normal_(self.fc1.weight, gain = gain)
+        torch.nn.init.xavier_normal_(self.fc2.weight, gain = gain)
 
     def forward(self, x):
         x = F.relu(self.conv1(x))
@@ -35,10 +35,10 @@ class LeNetMNIST_train(nn.Module):
         self.fc1 = nn.Linear(4*4*50, 500)
         self.fc2 = nn.Linear(500, n_out)
 	
-	torch.nn.init.xavier_normal_(self.conv1.weight, gain = gain)
-	torch.nn.init.xavier_normal_(self.conv2.weight, gain = gain)
-	torch.nn.init.xavier_normal_(self.fc1.weight, gain = gain)
-	torch.nn.init.xavier_normal_(self.fc2.weight, gain = gain)
+        torch.nn.init.xavier_normal_(self.conv1.weight, gain = gain)
+        torch.nn.init.xavier_normal_(self.conv2.weight, gain = gain)
+        torch.nn.init.xavier_normal_(self.fc1.weight, gain = gain)
+        torch.nn.init.xavier_normal_(self.fc2.weight, gain = gain)
 
     def forward(self, x):
         x = F.relu(self.conv1(x))
@@ -59,13 +59,13 @@ class LeNetCIFAR(nn.Module):
         self.conv2 = nn.Conv2d(6, 16, 5)
         self.fc1   = nn.Linear(16*5*5, 120)
         self.fc2   = nn.Linear(120, 84)
-        self.fc3   = nn.Linear(84, 25)
+        self.fc3   = nn.Linear(84, 10)
 
-	torch.nn.init.xavier_normal_(self.conv1.weight, gain = gain)
-	torch.nn.init.xavier_normal_(self.conv2.weight, gain = gain)
-	torch.nn.init.xavier_normal_(self.fc1.weight, gain = gain)
-	torch.nn.init.xavier_normal_(self.fc2.weight, gain = gain)
-	torch.nn.init.xavier_normal_(self.fc3.weight, gain = gain)
+        torch.nn.init.xavier_normal_(self.conv1.weight, gain = gain)
+        torch.nn.init.xavier_normal_(self.conv2.weight, gain = gain)
+        torch.nn.init.xavier_normal_(self.fc1.weight, gain = gain)
+        torch.nn.init.xavier_normal_(self.fc2.weight, gain = gain)
+        torch.nn.init.xavier_normal_(self.fc3.weight, gain = gain)
 
     def forward(self, x):
         out = F.relu(self.conv1(x))
@@ -76,11 +76,11 @@ class LeNetCIFAR(nn.Module):
         out = F.relu(self.fc1(out))
         out = F.relu(self.fc2(out))
         out = self.fc3(out)
-	return out
+        return out
 	
 
 class LeNetCIFAR_train(nn.Module):
-    def __init__(self, gain = 1, n_out = 2):
+    def __init__(self, gain = 1, n_out = 10):
         super(LeNetCIFAR_train, self).__init__()
         self.conv1 = nn.Conv2d(3, 6, 5)
         self.conv2 = nn.Conv2d(6, 16, 5)
@@ -88,11 +88,11 @@ class LeNetCIFAR_train(nn.Module):
         self.fc2   = nn.Linear(120, 84)
         self.fc3   = nn.Linear(84, n_out)
 
-	torch.nn.init.xavier_normal_(self.conv1.weight, gain = gain)
-	torch.nn.init.xavier_normal_(self.conv2.weight, gain = gain)
-	torch.nn.init.xavier_normal_(self.fc1.weight, gain = gain)
-	torch.nn.init.xavier_normal_(self.fc2.weight, gain = gain)
-	torch.nn.init.xavier_normal_(self.fc3.weight, gain = gain)
+        torch.nn.init.xavier_normal_(self.conv1.weight, gain = gain)
+        torch.nn.init.xavier_normal_(self.conv2.weight, gain = gain)
+        torch.nn.init.xavier_normal_(self.fc1.weight, gain = gain)
+        torch.nn.init.xavier_normal_(self.fc2.weight, gain = gain)
+        torch.nn.init.xavier_normal_(self.fc3.weight, gain = gain)
 
     def forward(self, x):
         out = F.relu(self.conv1(x))
@@ -103,7 +103,7 @@ class LeNetCIFAR_train(nn.Module):
         out = F.relu(self.fc1(out))
         out = F.relu(self.fc2(out))
         out = self.fc3(out)
-	return out
+        return out
 
 ##################################################################
 
@@ -114,9 +114,9 @@ class LeNetVOC(nn.Module):
         self.fc1   = nn.Linear(64*111*111, 120)
         self.fc2   = nn.Linear(120, 25)
 
-	torch.nn.init.xavier_normal_(self.conv1.weight, gain = gain)
-	torch.nn.init.xavier_normal_(self.fc1.weight, gain = gain)
-	torch.nn.init.xavier_normal_(self.fc2.weight, gain = gain)
+        torch.nn.init.xavier_normal_(self.conv1.weight, gain = gain)
+        torch.nn.init.xavier_normal_(self.fc1.weight, gain = gain)
+        torch.nn.init.xavier_normal_(self.fc2.weight, gain = gain)
 
     def forward(self, x):
         out = F.relu(self.conv1(x))
@@ -124,4 +124,4 @@ class LeNetVOC(nn.Module):
         out = out.view(out.size(0), -1)
         out = F.relu(self.fc1(out))
         out = self.fc2(out)
-	return out
+        return out
