@@ -1,29 +1,23 @@
 import os
-import torchvision.models as mdl
 import torchvision.transforms as transforms
 import torchvision.datasets as dset
-import torch.nn as nn
-import torch.optim as optim
 import torch
 import numpy as np
 import itertools
-import matplotlib.pyplot as plt
-import cv2
+
 from random import shuffle
-from scipy.ndimage import rotate
 from time import time
-from sklearn.cluster import KMeans, SpectralClustering
-from sklearn.decomposition import PCA
-from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
-from models import LeNetMNIST, LeNetCIFAR, LeNetVOC, LeNetCIFAR_train, LeNetMNIST_train
+from sklearn.cluster import KMeans
+
+from models import LeNetMNIST, LeNetCIFAR, LeNetVOC, LeNetCIFAR_train, LeNetMNIST_train, LeNet5, LeNetFilter
 
 
 class Data:
 	def __init__(self, dataset_name="MNIST"):
 		self.dataset_name = dataset_name
 		self.is_cuda = torch.cuda.is_available()
-		self.batch_size = 32
-		self.max_size = 256
+		self.batch_size = 128
+		self.max_size = 32
 		if self.dataset_name == "MNIST":
 			self.root = './data'
 			self.classes = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9']
@@ -49,37 +43,24 @@ class Data:
 
 	def create_networks(self, n_networks):
 		for i in xrange(n_networks):
-			if self.dataset_name == "MNIST": model=LeNetMNIST()
-			elif self.dataset_name == "CIFAR": model=LeNetCIFAR()
+			if self.dataset_name == "MNIST": model=LeNetFilter()  # model=LeNetMNIST()
+			elif self.dataset_name == "CIFAR": model=LeNetFilter() # MobileNetV2()  # LeNetCIFAR()
 			elif self.dataset_name == "VOC2012": model=LeNetVOC()
 			self.networks.append(model)
-		#print "Networks created"
 
-	def cluster_affinity_matrix(self, n_clusters=10):
-		mean_affinity_matrix = np.mean(self.all_affinity_matrices, axis=0)
-		clustering = SpectralClustering(n_clusters=n_clusters, affinity="precomputed", assign_labels="discretize").fit(mean_affinity_matrix)
-		self.predicted_labels = clustering.labels_
-		self.show_predicted_groups()
-
-	def show_predicted_groups(self):
-		n = len(np.unique(self.predicted_labels))
-		to_show = 20
-		columns = []
-		for i in xrange(n):
-			indices = np.random.choice(np.where(self.predicted_labels == i)[0], to_show, replace=False)
-			row = []
-			for idx in indices:
-				row.append(self.get_image(idx))
-			image = row[0]
-			for j in xrange(1, to_show):
-				image = np.concatenate((image, row[j]), axis=1)
-			columns.append(image)
-		image = columns[0]
-		for i in xrange(1, len(columns)):
-			image = np.concatenate((image, columns[i]), axis=0)
-		cv2.imshow('Images', image)
-		cv2.waitKey(0)
-		cv2.destroyAllWindows()
+	def create_network(self):
+		kernels = [3, 5, 7, 9]
+		kernel = np.random.choice(kernels, 1)[0]
+		gains = [0.9, 1.0, 1.1]  # [0.001, 0.01, 0.05, 0.1, 0.5, 0.9, 1.0, 1.1, 1.5, 2.0, 5.0, 10.0]
+		gain = np.random.choice(gains, 1)[0]
+		if self.dataset_name == "MNIST":
+			feat = (28-kernel+1)/2
+			dim = 1
+		elif self.dataset_name == "CIFAR":
+			feat = (32-kernel+1)/2
+			dim = 3
+		#elif self.dataset_name == "VOC2012": model=LeNetVOC()
+		return LeNetFilter(kernel, feat, dim, gain) # model=LeNetMNIST() # MobileNetV2()  # LeNetCIFAR()
 
 	def load_dataset(self):
 		if self.dataset_name == "MNIST":
@@ -138,9 +119,7 @@ class Data:
 			else:
 				inputs.extend(all_inputs[i])
 				gt.extend(ground_truth[i])
-		inputs = np.asarray(inputs)
-		ground_truth = np.asarray(gt)
-		return inputs, ground_truth
+		return np.asarray(inputs), np.asarray(gt)
 
 	def run_dataset(self, inputs, n_clusters=10, iters=151):
 
@@ -149,7 +128,7 @@ class Data:
 		inputs = torch.from_numpy(inputs)
 		start = time()
 
-		possible_clusters = [i for i in xrange(10, n_clusters, 5)]
+		possible_clusters = [cluster for cluster in xrange(10, n_clusters, 5)]
 
 		# set max batch size:
 		max_size = self.max_size
@@ -169,6 +148,7 @@ class Data:
 				#if self.is_cuda:
 					#temp_inputs = inputs[start_idx:end_idx].cuda()
 				################### EXTRACTING FEATURES ################
+
 				if k == 0:
 					features = model(inputs[start_idx:end_idx].cuda()).data.cpu().numpy()
 				else:
@@ -199,212 +179,3 @@ class Data:
 				print "Iteration:", i, "Time elapsed:", time()-start
 				start = time()
 		return all_affinity_matrices/i
-
-	def train_net(self):
-		print "Training"
-		if self.dataset_name == "MNIST":
-			model = LeNetMNIST_train()
-			optimizer = optim.SGD(model.fc2.parameters(), lr=0.1)
-		elif self.dataset_name == "CIFAR":
-			model = LeNetCIFAR_train()
-			optimizer = optim.SGD(model.fc3.parameters(), lr=0.01)
-
-		# specify loss function
-		criterion = nn.CrossEntropyLoss()
-
-		n_epochs = 30 # you may increase this number to train a final model
-
-		valid_loss_min = np.Inf # track change in validation loss
-
-		if self.is_cuda:
-			model.cuda()	
-		for epoch in range(1, n_epochs+1):
-
-			# keep track of training and validation loss
-			train_loss = 0.0
-
-			###################
-			# train the model #
-			###################
-
-			model.train()
-			for data, target in self.train_loader:
-				# move tensors to GPU if CUDA is available
-				if self.is_cuda:
-					data, target = data.cuda(), target.cuda()
-				# clear the gradients of all optimized variables
-				optimizer.zero_grad()
-				# forward pass: compute predicted outputs by passing inputs to the model
-				output = model(data)
-				# calculate the batch loss
-				loss = criterion(output, target)
-				# backward pass: compute gradient of the loss with respect to model parameters
-				loss.backward()
-				# perform a single optimization step (parameter update)
-				optimizer.step()
-				# update training loss
-				train_loss += loss.item()*data.size(0)
-
-			train_loss = train_loss/len(self.train_loader.dataset)
-			# print training/validation statistics 
-			print('Epoch: {} \tTraining Loss: {:.6f}'.format(epoch, train_loss))
-
-
-	def visualize_data(self, affinity_matrix):
-
-
-		print "Affinity matrix shape", np.shape(affinity_matrix)
-		def on_pick(event):
-			category = None
-			if event.artist in plots1:
-				category = plots1.index(event.artist)
-			elif event.artist in plots2:
-				category = plots2.index(event.artist)
-			elif event.artist in plots3:
-				category = plots3.index(event.artist)
-			# elif(event.artist in plots4):
-			#	category = plots4.index(event.artist)
-			self.show_image(event.ind[0], category)
-
-		categories = np.unique(self.ground_truth)
-
-		data = self.perform_pca(affinity_matrix)
-		data = self.normalize_data(data)
-
-
-		self.visualize_dimension(data)
-
-		pt_size = 10
-		fig, axarr = plt.subplots(2, 2)
-
-		plots1 = [[] for i in xrange(len(categories))]
-		plots2 = [[] for i in xrange(len(categories))]
-		plots3 = [[] for i in xrange(len(categories))]
-		# plots4 = [[] for i in xrange(len(categories))]
-		for i in categories:
-			indices = np.where(self.ground_truth == i)[0]
-			plots1[i] = axarr[0,0].scatter([data[j,0] for j in indices],[data[j,1] for j in indices], picker=5, s=pt_size, label=self.classes[i], c=self.colors[i])
-			plots2[i] = axarr[0,1].scatter([data[j,1] for j in indices],[data[j,2] for j in indices], picker=5, s=pt_size, label=self.classes[i], c=self.colors[i])
-			plots3[i] = axarr[1,0].scatter([data[j,2] for j in indices],[data[j,3] for j in indices], picker=5, s=pt_size, label=self.classes[i], c=self.colors[i])
-			# plots4[i] = axarr[1,1].scatter([data[j,3] for j in indices],[data[j,4] for j in indices], picker = 5, s=pt_size, label=self.classes[i], c=self.colors[i])
-
-		axarr[0, 0].set_title('PCA dims: 1 & 2')
-		axarr[0, 1].set_title('PCA dims: 2 & 3')
-		axarr[1, 0].set_title('PCA dims: 3 & 4')
-		# axarr[1, 1].set_title('PCA dims: 4 & 5')
-		# show legend:
-		axarr[0,0].legend(bbox_to_anchor=(-0.3, 1), loc='upper left', ncol=1, fontsize=10)
-		fig.canvas.mpl_connect('pick_event', on_pick)
-		plt.show()
-		return data
-
-	def normalize_data(self, data, k=5):
-		data = data[:,:k]
-		data_center = np.mean(data)
-		data = data - data_center
-		for i in xrange(k):
-			data[:,i] = data[:,i]/max([abs(np.min(data[:, i])), abs(np.max(data[:, i]))])
-		return data
-
-	def perform_pca(self, affinity_matrix, n_components=5):
-		self.pca = PCA(n_components=n_components)
-		return self.pca.fit_transform(affinity_matrix)
-
-	def get_image(self, idx):
-		if self.dataset_name == "CIFAR":
-			img =self.inv_normalize(torch.from_numpy(self.inputs_small[idx].copy())).numpy()
-			img = cv2.cvtColor(np.transpose(img, (1, 2, 0)), cv2.COLOR_BGR2RGB)
-		elif self.dataset_name == "MNIST":
-			img = self.inputs_small[idx, 0].copy()
-		return cv2.resize(img, (0,0), fx=3.0, fy=3.0)
-
-	def show_image(self, idx, category):
-		img_per_category = len(self.inputs_small)/self.n_categories
-		idx = img_per_category*category+idx
-		if self.dataset_name == "CIFAR":
-			img =self.inv_normalize(torch.from_numpy(self.inputs_small[idx].copy())).numpy()
-			plt.imshow(np.transpose(img, (1, 2, 0)), interpolation='nearest')
-		elif self.dataset_name == "MNIST":
-			img = self.inputs_small[idx, 0].copy()
-			plt.matshow(img)
-		plt.grid(False)
-		plt.show()
-
-	def visualize_dimension(self, data, dims=[0, 1, 2, 3]):
-		no_images = 20
-		all_images = []
-		for dim in dims:
-			min_value = min(data[:, dim])
-			max_value = max(data[:, dim])
-			thresholds = np.linspace(min_value, max_value, num = no_images)
-
-			images = []
-			print "Data shape", np.shape(data)
-			for i in xrange(no_images-1):
-			
-				indices = np.intersect1d(np.where(data[:, dim] >= thresholds[i])[0], np.where(data[:, dim] <= thresholds[i+1])[0])
-				points = np.asarray([data[j] for j in indices])
-
-				idx = indices[np.argmin(np.abs(points[:, dim+1]))]
-
-				images.append(self.get_image(idx))
-				del indices, points
-			image = images[0]
-			for i in xrange(1, no_images-1):
-				image = np.concatenate((image, images[i]), axis=1)
-			all_images.append(image)
-			del image, images
-
-		image = all_images[0]
-		for i in xrange(1, len(all_images)):
-			image = np.concatenate((image, all_images[i]), axis=0)
-		cv2.imwrite('./images.jpg', image)
-		cv2.imshow('Images', image)
-		cv2.waitKey(0)
-		cv2.destroyAllWindows()
-
-def modify_data(inputs, cat_1=0, cat_2=1):
-
-	# choose only 0's and 1's
-	n = len(inputs)
-	zeros = inputs[cat_1*n/10:(cat_1+1)*n/10]
-	ones = inputs[cat_2*n/10:(cat_2+1)*n/10]
-
-	# shuffle them
-	np.random.shuffle(zeros)
-	np.random.shuffle(ones)
-
-	# split in halves:
-	m = len(zeros)/2
-	normal_zeros = zeros[:m]
-	modified_zeros = zeros[m:]
-	normal_ones = ones[:m]
-	modified_ones = ones[m:]
-	
-	# modify other halves:
-
-	# option A: negative
-	
-	old_zeros = modified_zeros[...]
-	
-	modified_zeros = -modified_zeros
-	modified_ones = -modified_ones
-	'''
-	# option B: rotate
-	modified_zeros = rotate(modified_zeros, 90, (2, 3))
-	modified_ones = rotate(modified_ones, 90, (2, 3))
-	'''
-	print np.shape(old_zeros), np.shape(modified_zeros)
-	f, axarr = plt.subplots(1, 2)
-	axarr[0].matshow(old_zeros[0, 0, ...])
-	axarr[1].matshow(modified_zeros[0, 0, ...])
-	plt.show()
-
-	new_inputs = np.concatenate((normal_zeros, modified_zeros, normal_ones, modified_ones), axis = 0)
-	new_ground_truth = np.concatenate((np.zeros(m), np.ones(m), 2*np.ones(m), 3*np.ones(m)), axis = 0)
-	new_classes = ["Normal "+str(cat_1)+"'s", "Color-reversed "+str(cat_1)+"'s", "Normal "+str(cat_2)+"'s", "Color-reversed "+str(cat_2)+"'s"]
-	print np.shape(new_inputs)
-	print np.shape(new_ground_truth)
-	colors = ['r', 'g', 'b', 'k']
-	return new_inputs, new_ground_truth, new_classes, colors
-
