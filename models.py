@@ -62,11 +62,11 @@ class LeNetCIFAR(nn.Module):
         self.fc2   = nn.Linear(120, 84)
         self.fc3   = nn.Linear(84, 10)
 
-        torch.nn.init.xavier_normal_(self.conv1.weight, gain = gain)
-        torch.nn.init.xavier_normal_(self.conv2.weight, gain = gain)
-        torch.nn.init.xavier_normal_(self.fc1.weight, gain = gain)
-        torch.nn.init.xavier_normal_(self.fc2.weight, gain = gain)
-        torch.nn.init.xavier_normal_(self.fc3.weight, gain = gain)
+        torch.nn.init.xavier_normal_(self.conv1.weight, gain = 1.0)
+        torch.nn.init.xavier_normal_(self.conv2.weight, gain = 1.0)
+        torch.nn.init.xavier_normal_(self.fc1.weight, gain = 1.0)
+        torch.nn.init.xavier_normal_(self.fc2.weight, gain = 1.0)
+        torch.nn.init.xavier_normal_(self.fc3.weight, gain = 1.0)
 
     def forward(self, x):
         out = F.relu(self.conv1(x))
@@ -81,30 +81,34 @@ class LeNetCIFAR(nn.Module):
 	
 
 class LeNetCIFAR_train(nn.Module):
-    def __init__(self, gain = 1, n_out = 10):
+    def __init__(self, final_size = 2):
         super(LeNetCIFAR_train, self).__init__()
-        self.conv1 = nn.Conv2d(3, 6, 5)
-        self.conv2 = nn.Conv2d(6, 16, 5)
-        self.fc1   = nn.Linear(16*5*5, 120)
-        self.fc2   = nn.Linear(120, 84)
-        self.fc3   = nn.Linear(84, n_out)
+        gain = 1.0
 
-        torch.nn.init.xavier_normal_(self.conv1.weight, gain = gain)
-        torch.nn.init.xavier_normal_(self.conv2.weight, gain = gain)
-        torch.nn.init.xavier_normal_(self.fc1.weight, gain = gain)
-        torch.nn.init.xavier_normal_(self.fc2.weight, gain = gain)
-        torch.nn.init.xavier_normal_(self.fc3.weight, gain = gain)
+        self.conv1 = nn.Conv2d(3, 6, 5)
+        self.pool = nn.MaxPool2d(2, 2)
+        self.conv2 = nn.Conv2d(6, 16, 5)
+        self.fc1 = nn.Linear(16 * 5 * 5, 120)
+        self.fc2 = nn.Linear(120, 84)
+        self.fc3 = nn.Linear(84, 25)
+        self.fc4 = nn.Linear(25, final_size)
+
+        torch.nn.init.xavier_normal_(self.conv1.weight, gain=gain)
+        torch.nn.init.xavier_normal_(self.conv2.weight, gain=gain)
+        torch.nn.init.xavier_normal_(self.fc1.weight, gain=gain)
+        torch.nn.init.xavier_normal_(self.fc2.weight, gain=gain)
+        torch.nn.init.xavier_normal_(self.fc3.weight, gain=gain)
+        torch.nn.init.xavier_normal_(self.fc4.weight, gain=gain)
 
     def forward(self, x):
-        out = F.relu(self.conv1(x))
-        out = F.max_pool2d(out, 2)
-        out = F.relu(self.conv2(out))
-        out = F.max_pool2d(out, 2)
-        out = out.view(out.size(0), -1)
-        out = F.relu(self.fc1(out))
-        out = F.relu(self.fc2(out))
-        out = self.fc3(out)
-        return out
+        x = self.pool(F.relu(self.conv1(x)))
+        x = self.pool(F.relu(self.conv2(x)))
+        x = x.view(-1, 16 * 5 * 5)
+        x = F.relu(self.fc1(x))
+        x = F.relu(self.fc2(x))
+        x = F.relu(self.fc3(x))
+        x = self.fc4(x)
+        return x
 
 ##################################################################
 
@@ -129,7 +133,7 @@ class LeNetVOC(nn.Module):
 
 ##################################################################
 class LeNet5(nn.Module):
-    def __init__(self):
+    def __init__(self, final_size = 2):
         super(LeNet5, self).__init__()
         # Convolution (In LeNet-5, 32x32 images are given as input. Hence padding of 2 is done below)
         self.conv1 = torch.nn.Conv2d(in_channels=1, out_channels=6, kernel_size=5, stride=1, padding=2, bias=True)
@@ -142,7 +146,13 @@ class LeNet5(nn.Module):
         # Fully connected layer
         self.fc1 = torch.nn.Linear(16*5*5, 120)   # convert matrix with 16*5*5 (= 400) features to a matrix of 120 features (columns)
         self.fc2 = torch.nn.Linear(120, 84)       # convert matrix with 120 features to a matrix of 84 features (columns)
-        self.fc3 = torch.nn.Linear(84, 10)        # convert matrix with 84 features to a matrix of 10 features (columns)
+        self.fc3 = torch.nn.Linear(84, final_size)        # convert matrix with 84 features to a matrix of 10 features (columns)
+
+        torch.nn.init.xavier_normal_(self.conv1.weight, gain=1.)
+        torch.nn.init.xavier_normal_(self.conv2.weight, gain=1.)
+        torch.nn.init.xavier_normal_(self.fc1.weight, gain=1.)
+        torch.nn.init.xavier_normal_(self.fc2.weight, gain=1.)
+        torch.nn.init.xavier_normal_(self.fc3.weight, gain=1.)
 
     def forward(self, x):
         # convolve, then perform ReLU non-linearity
@@ -173,6 +183,7 @@ class LeNetFilter(nn.Module):
 
         self.conv1 = nn.Conv2d(dim, n_filters, kernel)
         self.fc1 = nn.Linear(n_filters * feat * feat, 100)
+        #self.fc2 = nn.Linear(100, 10)
 
         #self.fc1 = nn.Linear(3*32*32, 10)
 
@@ -192,13 +203,21 @@ class LeNetFilter(nn.Module):
 
 ##################################################################
 
-class Net(nn.Module):
-    def __init__(self, in_size, mid_size, out_size):
-        super(Net, self).__init__()
-        self.fc1 = nn.Linear(in_size, mid_size)
-        self.fc2 = nn.Linear(mid_size, out_size)
+class MLP(nn.Module):
+    def __init__(self, in_size):
+        super(MLP, self).__init__()
+        self.fc1 = nn.Linear(in_size, 2048)
+        self.fc2 = nn.Linear(2048, 1024)
+        self.fc3 = nn.Linear(1024, 512)
+        self.fc4 = nn.Linear(512, 10)
+        self.dropout = nn.Dropout(p=0.2)
 
     def forward(self, x):
         out = F.relu(self.fc1(x))
-        out = self.fc2(out)
+        out = self.dropout(out)
+        out = F.relu(self.fc2(out))
+        out = self.dropout(out)
+        out = F.relu(self.fc3(out))
+        out = self.dropout(out)
+        out = self.fc4(out)
         return out

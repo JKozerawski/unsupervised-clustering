@@ -14,16 +14,77 @@ from sklearn.decomposition import PCA
 from sklearn.metrics import accuracy_score
 from sklearn.svm import SVC
 from sklearn.neighbors import KNeighborsClassifier
-from sklearn.cluster import KMeans
+from sklearn.cluster import KMeans, MiniBatchKMeans
 from math import ceil
+from sklearn.preprocessing import normalize
+import cv2
+import warnings
 
 from load_data import Data
 from mobilenet_v2 import MobileNetV2
-from models import LeNetMNIST, LeNetCIFAR, LeNetVOC, LeNetCIFAR_train, LeNetMNIST_train, LeNet5, Net
+from models import LeNetMNIST, LeNetCIFAR, LeNetVOC, LeNetCIFAR_train, LeNetMNIST_train, LeNet5, MLP
 
+
+warnings.filterwarnings("ignore", category=DeprecationWarning)
 datset_name = "MNIST"
 
 #sns.set(style="white", rc={"axes.facecolor": (0, 0, 0, 0)})
+
+def extract_sift(dset, train_data, test_data):
+
+	dim = 64
+	#sift = cv2.xfeatures2d.SIFT_create()
+	sift = cv2.xfeatures2d.SURF_create()
+	#sift = cv2.ORB_create()
+
+
+	start = time()
+	features = []
+	train_features = []
+	for i in xrange(len(train_data)):
+		img = dset.inv_normalize(torch.from_numpy(train_data[i].copy())).numpy()
+		img = cv2.cvtColor(np.transpose(img, (1, 2, 0)), cv2.COLOR_BGR2GRAY)
+		img = cv2.resize(img,(320,320))
+		img = np.uint8(255*img)
+		kps, des = sift.detectAndCompute(img, None)
+		if des is None: feature = np.zeros((1, dim))
+		else: feature = np.asarray(des)
+		train_features.append(feature)
+		features.extend(feature)
+	features = np.asarray(features)
+	print "Features extracted", time()-start
+	start = time()
+	# Bag of Visual Words:
+	K = 100
+	kmeans = MiniBatchKMeans(n_clusters=K).fit(features)  # KMeans(n_clusters=K).fit(features)
+	print "KMeans finished", time()-start
+
+	# vectorize bag of words:
+	train_vectors = []
+	for i in xrange(len(train_data)):
+		des = train_features[i]
+		vector = np.zeros((1, K))
+		labels = kmeans.predict(des)
+		for j in xrange(len(des)):
+			vector[0, labels[j]] += 1.0
+		train_vectors.extend(normalize(vector))
+
+	print "Test vectors calculation"
+	test_vectors = []
+	for i in xrange(len(test_data)):
+		img = dset.inv_normalize(torch.from_numpy(test_data[i].copy())).numpy()
+		img = cv2.cvtColor(np.transpose(img, (1, 2, 0)), cv2.COLOR_BGR2GRAY)
+		img = cv2.resize(img, (320, 320))
+		img = np.uint8(255 * img)
+		kps, des = sift.detectAndCompute(img, None)
+		if des is None: des = np.zeros((1, dim))
+		vector = np.zeros((1, K))
+		labels = kmeans.predict(des)
+		for j in xrange(len(des)):
+			vector[0, labels[j]] += 1.0
+		test_vectors.extend(normalize(vector))
+
+	return np.asarray(train_vectors), np.asarray(test_vectors)
 
 def flatten_data(data):
 	return np.reshape(data, (len(data), -1))
@@ -78,21 +139,32 @@ def compare_models(dset):
 	train_data, train_labels = dset.get_data(dset.train_loader, 500)
 	test_data, test_labels = dset.get_data(dset.test_loader, 200)
 
+
+	print "SIFT features:"
+	sift_train_data, sift_test_data = extract_sift(dset, train_data, test_data)
+	print np.shape(sift_train_data), np.shape(sift_test_data)
+	print
+	print "Raw data:"
+	baselines(sift_train_data, train_labels, sift_test_data, test_labels)
+	print
+	print "Baseline MLP:"
+	baseline_MLP(sift_train_data, train_labels, sift_test_data, test_labels)
+	'''
 	print
 	print "Raw data:"
 	baselines(flatten_data(train_data), train_labels, flatten_data(test_data), test_labels)
 	print
 	print "Baseline MLP:"
-	baseline_MLP(flatten_data(train_data), train_labels, flatten_data(test_data), test_labels, epochs=20)
+	baseline_MLP(flatten_data(train_data), train_labels, flatten_data(test_data), test_labels)
 	print
 	print "Baseline CNN:"
-	baseline_CNN(train_data, train_labels, test_data, test_labels, dataset_name=dset.dataset_name, epochs=20)
+	baseline_CNN(train_data, train_labels, test_data, test_labels, dataset_name=dset.dataset_name)
 
 	print
 	print "Ours:"
 	#run_random_networks(dset, train_data, train_labels, test_data, test_labels)
 	test_affinity_approach(dset, train_data, train_labels, test_data, test_labels)
-
+	'''
 
 def baselines(train_data, train_labels, test_data, test_labels):
 
@@ -109,9 +181,9 @@ def baselines(train_data, train_labels, test_data, test_labels):
 	accuracy = accuracy_score(test_labels, predictions)
 	print "Accuracy for kNN baseline method:", accuracy
 
-def baseline_MLP(train_data, train_labels, test_data, test_labels, epochs=10):
+def baseline_MLP(train_data, train_labels, test_data, test_labels, epochs=100):
 	n = len(train_data[0])
-	model = Net(n, n/2, 10)
+	model = MLP(n)
 	optimizer = optim.Adam(model.parameters(), lr=2e-3)
 	if is_cuda:
 		model.cuda()
@@ -145,14 +217,14 @@ def baseline_MLP(train_data, train_labels, test_data, test_labels, epochs=10):
 	accuracy = accuracy_score(test_labels, predictions)
 	print "Accuracy for MLP baseline method:", accuracy
 
-def baseline_CNN(train_data, train_labels, test_data, test_labels, dataset_name="MNIST", epochs=10):
+def baseline_CNN(train_data, train_labels, test_data, test_labels, dataset_name="MNIST", epochs=100):
 
 	if dataset_name == 'MNIST':
 		curr_lr = 2e-3  # 0.1
 		model = LeNet5()  # LeNetMNIST_train()
 		optimizer = optim.Adam(model.parameters(), lr=curr_lr)
 	elif dataset_name == 'CIFAR':
-		curr_lr = 2e-3#0.1
+		curr_lr = 2e-3  # 0.1
 		model = LeNetCIFAR_train()  # MobileNetV2()
 		optimizer = optim.Adam(model.parameters(), lr=curr_lr)
 		epochs = 60
@@ -248,7 +320,7 @@ def run_random_networks(dset, train_data, train_labels, test_data, test_labels):
 		else:
 			"No improvement"
 		del temp_affinity_matrix
-		if(count>=300): return affinity_matrix[:m,...], affinity_matrix[m:,...]
+		if(count>=200): return affinity_matrix[:m,...], affinity_matrix[m:,...]
 	return affinity_matrix[:m,...], affinity_matrix[m:,...]
 
 def test_affinity_matrix(train_data, train_labels, test_data, test_labels):
@@ -257,41 +329,12 @@ def test_affinity_matrix(train_data, train_labels, test_data, test_labels):
 	accuracy = accuracy_score(test_labels, predictions)
 	return accuracy
 
-def pass_random_network(model, inputs):
-	tot_len = len(inputs)
-	affinity_matrix = np.zeros((tot_len, tot_len))
-	if is_cuda:
-		model.cuda()
 
-	inputs = torch.from_numpy(inputs)
-	possible_clusters = [cluster for cluster in xrange(10, 50, 5)]
-	max_size = 128
-	no_of_passes = -((-tot_len) // max_size)
-	for k in xrange(no_of_passes):
-		start_idx = k * max_size
-		end_idx = min([(k + 1) * max_size, tot_len])
-		if k == 0:
-			features = model(inputs[start_idx:end_idx].cuda()).data.cpu().numpy()
-		else:
-			features = np.concatenate((features, model(inputs[start_idx:end_idx].cuda()).data.cpu().numpy()), axis=0)
 
-	try:
-		################### CLUSTERING #########################
-		n_clusters = np.random.choice(possible_clusters)
-		kmeans = KMeans(n_clusters=n_clusters).fit(features)
-
-		################## AFFINITY MATRIX ####################
-		for j in xrange(n_clusters):
-			indices = np.where(kmeans.labels_ == j)[0]
-			for pair in itertools.product(indices, repeat=2):
-				affinity_matrix[pair[0], pair[1]] += 1
-		del kmeans, indices
-	except:
-		print "Some error"
-	return affinity_matrix
-
+'''
 dset_class = Data(datset_name)
 dset_class.load_dataset()
 is_cuda = dset_class.is_cuda
 
 compare_models(dset_class)
+'''

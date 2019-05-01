@@ -70,9 +70,12 @@ class Data:
 		elif self.dataset_name == "CIFAR":
 			trans = transforms.Compose([
 					transforms.ToTensor(),
-					transforms.Normalize([0.4914, 0.4822, 0.4465], [0.247, 0.243, 0.261]),
+					transforms.Normalize([0.5, 0.5, 0.5], [1.0, 1.0, 1.0]),
+					#transforms.Normalize([0.4914, 0.4822, 0.4465], [0.247, 0.243, 0.261]),
 					])
-			self.inv_normalize = transforms.Normalize(mean=[-0.4914/0.247, -0.4822/0.243, -0.4465/0.255], std=[1/0.247, 1/0.243, 1/0.261])
+			self.inv_normalize = transforms.Normalize(mean=[-0.5, -0.5, -0.5],
+													  std=[1.0, 1.0, 1.0])
+			#self.inv_normalize = transforms.Normalize(mean=[-0.4914/0.247, -0.4822/0.243, -0.4465/0.255], std=[1/0.247, 1/0.243, 1/0.261])
 			train_set = dset.CIFAR10(root=self.root, train=True, download=True, transform=trans)
 			test_set = dset.CIFAR10(root=self.root, train=False, download=True, transform=trans)
 
